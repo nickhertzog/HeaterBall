@@ -11,6 +11,8 @@ const COURT_VISION_CHANCES = [25, 35, 45, 55, 65];
 const OPEN_LOOK_ODDS_BONUS = { layup: 5, freeThrow: 10, three: 15, halfCourt: 20 };
 const OPEN_LOOK_POINTS_MULT = 1.25;
 const SAVE_KEY = "fullCourtGrindSaveV1";
+const SHOP_TUTORIAL_KEY = "fullCourtGrindShopTutorialSeenV2";
+const COURT_TUTORIAL_KEY = "fullCourtGrindCourtTutorialSeenV2";
 const RIM = { x: 50, y: 3.8 };
 const FRONT_RIM_LEFT = { x: 44.2, y: 7.0 };
 const FRONT_RIM_RIGHT = { x: 55.8, y: 7.0 };
@@ -26,7 +28,7 @@ const BACK_RIM_TARGET = { x: 50, y: 7.0 };
 const MAKE_DROP_TARGET = { x: 50, y: 11.5 };
 const PLAYOFF_BACK_RIM_TARGET = { x: 50, y: 21.2 };
 
-const EXTRA_BALL_COSTS = [2, 8, 25, 70, 180, 400, 900, 2000];
+const EXTRA_BALL_COSTS = [1, 8, 25, 70, 180, 400, 900, 2000];
 const SPECIALIST_COSTS = [15, 45, 120, 300, 700, 1400, 2600, 4500, 7500, 11500, 17000, 24000];
 const SPECIALIST_LEVEL_CAPS = {
   layup: 2,
@@ -39,7 +41,7 @@ const HOT_HAND_MULTS = [2, 4, 8, 12, 18, 25, 35, 50];
 const DOUBLE_RIM_COSTS = [40, 125, 350, 900, 2200];
 const GOLDEN_BALL_COSTS = [15, 50, 150, 450, 1200];
 const NEUTRAL_LOCKER_PHRASES = [
-  "Hit the Showers",
+  "Visit the Shop",
   "Back to the Lab",
   "Check the Box Score",
   "Reload the Jumper",
@@ -229,16 +231,36 @@ function StatBox({ label, value, color = "text-white", maxed = false, valueSize 
   return <div onClick={onClick} className={`${heightClass} rounded-xl border px-2 py-1.5 text-center relative overflow-hidden flex flex-col items-center justify-center active:scale-[0.98] ${maxClass}`}><p className={`${labelSize} uppercase tracking-wide text-slate-500 font-black leading-none`}>{label}</p><p className={`mt-1 ${valueSize} font-black leading-tight ${color}`}>{value}</p></div>;
 }
 
-function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cost, level, max, onBuy, currentPoints, note = null, locked = false }) {
+function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cost, level, max, onBuy, currentPoints, note = null, locked = false, highlight = false, tutorialStyle = null, tourId = null }) {
   const [showNote, setShowNote] = useState(false);
   const [noteAnchorY, setNoteAnchorY] = useState(0);
-  const [notePlacement, setNotePlacement] = useState("above");
   const holdTimer = useRef(null);
   const t = THEME[theme] || THEME.lab;
   const maxed = level >= max;
   const disabled = currentPoints < cost;
-  const buttonClass = maxed ? "bg-emerald-700/40 text-emerald-200" : disabled ? "bg-slate-800 text-slate-500" : t.button;
-  const popupShiftClass = "translate-y-0";
+  const isExtraBallsTutorial = !!highlight && tutorialStyle === "extraBalls";
+  const isHotHandTutorial = !!highlight && tutorialStyle === "hotHand";
+  const tutorialActive = isExtraBallsTutorial || isHotHandTutorial;
+  const cardClass = isExtraBallsTutorial
+    ? "!bg-gradient-to-br !from-sky-300 !via-cyan-300 !to-blue-500 !border-white text-slate-950 shadow-[0_0_0_3px_rgba(255,255,255,0.95),0_0_46px_rgba(56,189,248,1)]"
+    : isHotHandTutorial
+    ? "!bg-gradient-to-br !from-red-300 !via-orange-300 !to-red-500 !border-white text-slate-950 shadow-[0_0_0_3px_rgba(255,255,255,0.95),0_0_46px_rgba(248,113,113,1)]"
+    : maxed
+    ? "bg-emerald-950/40 border-emerald-500/50"
+    : t.card;
+  const innerClass = tutorialActive
+    ? "bg-white/80 border-white text-slate-950 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.9)]"
+    : "bg-slate-950/70 border-slate-800";
+  const textClass = isExtraBallsTutorial ? "text-sky-950" : isHotHandTutorial ? "text-red-950" : "";
+  const buttonClass = maxed
+    ? "bg-emerald-700/40 text-emerald-200"
+    : disabled
+    ? "bg-slate-800 text-slate-500"
+    : isExtraBallsTutorial
+    ? "!bg-sky-950 !text-white !border !border-white ring-4 ring-white shadow-[0_0_24px_rgba(255,255,255,0.95),0_0_18px_rgba(14,165,233,0.95)] animate-pulse"
+    : isHotHandTutorial
+    ? "!bg-red-950 !text-white !border !border-white ring-4 ring-white shadow-[0_0_24px_rgba(255,255,255,0.95),0_0_18px_rgba(248,113,113,0.95)] animate-pulse"
+    : t.button;
   const noteTitle = note?.includes(":") ? note.split(":")[0] : "Info";
   const noteBody = note?.includes(":") ? note.slice(note.indexOf(":") + 1).trim() : note;
 
@@ -247,7 +269,6 @@ function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cos
     const rect = event.currentTarget.getBoundingClientRect();
     clearTimeout(holdTimer.current);
     holdTimer.current = window.setTimeout(() => {
-      setNotePlacement("below");
       setNoteAnchorY(Math.max(12, rect.top));
       setShowNote(true);
     }, 100);
@@ -260,46 +281,37 @@ function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cos
     setShowNote(false);
   }
 
-  const infoHandlers = note
-    ? {
-        onPointerDown: startInfoHold,
-        onPointerUp: stopInfoHold,
-        onPointerCancel: stopInfoHold,
-        onTouchStart: startInfoHold,
-        onTouchEnd: stopInfoHold,
-        onTouchCancel: stopInfoHold,
-        onContextMenu: (event) => event.preventDefault(),
-      }
-    : {};
+  const infoHandlers = note ? {
+    onPointerDown: startInfoHold,
+    onPointerUp: stopInfoHold,
+    onPointerCancel: stopInfoHold,
+    onTouchStart: startInfoHold,
+    onTouchEnd: stopInfoHold,
+    onTouchCancel: stopInfoHold,
+    onContextMenu: (event) => event.preventDefault(),
+  } : {};
 
   const InfoButton = note ? (
-    <button
-      type="button"
-      {...infoHandlers}
-      className="absolute right-0 top-0 z-30 inline-flex h-11 w-11 select-none touch-none items-start justify-end rounded-xl pr-2 pt-2 text-[12px] font-black italic leading-none text-slate-300 active:scale-95 before:absolute before:right-2 before:top-2 before:h-6 before:w-6 before:rounded-full before:border before:border-slate-600 before:bg-slate-950/85 before:shadow-sm"
-    >
+    <button type="button" {...infoHandlers} className="absolute right-0 top-0 z-30 inline-flex h-11 w-11 select-none touch-none items-start justify-end rounded-xl pr-2 pt-2 text-[12px] font-black italic leading-none text-slate-300 active:scale-95 before:absolute before:right-2 before:top-2 before:h-6 before:w-6 before:rounded-full before:border before:border-slate-600 before:bg-slate-950/85 before:shadow-sm">
       <span className="relative z-10 flex h-6 w-6 items-center justify-center">i</span>
     </button>
   ) : null;
 
   const InfoPopup = note && showNote ? (
-    <div
-      className={`fixed left-[43%] w-[min(300px,calc(100vw-56px))] -translate-x-1/2 ${popupShiftClass} select-none rounded-2xl border border-sky-300/30 bg-slate-950/98 px-4 py-3 text-left text-[12px] font-medium leading-snug text-slate-100 whitespace-pre-line shadow-[0_0_28px_rgba(0,0,0,0.88),0_0_16px_rgba(14,165,233,0.16)] backdrop-blur-md pointer-events-none`}
-      style={{ top: `${noteAnchorY}px`, zIndex: 2147483647, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}
-    >
+    <div className="fixed left-[43%] w-[min(300px,calc(100vw-56px))] -translate-x-1/2 select-none rounded-2xl border border-sky-300/30 bg-slate-950/98 px-4 py-3 text-left text-[12px] font-medium leading-snug text-slate-100 whitespace-pre-line shadow-[0_0_28px_rgba(0,0,0,0.88),0_0_16px_rgba(14,165,233,0.16)] backdrop-blur-md pointer-events-none" style={{ top: `${noteAnchorY}px`, zIndex: 2147483647, WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
       <span className={`font-black ${t.title}`}>{noteTitle}:</span> {noteBody}
     </div>
   ) : null;
 
   if (locked) {
     return (
-      <div className={`relative col-span-2 rounded-xl border shadow-sm p-2.5 ${t.card} min-h-[142px]`}>
+      <div data-shop-tour={tourId || undefined} className={`relative col-span-2 rounded-xl border shadow-sm p-2.5 ${cardClass} min-h-[142px]`}>
         <div className="absolute inset-0 bg-slate-950/45 z-0" />
         {InfoPopup}
         {InfoButton}
         <div className="relative z-10 flex items-center gap-2 min-w-0 pr-8">
           <span className="text-sm">🔒</span>
-          <p className={`text-[15px] font-black leading-tight ${t.title}`}>{title}</p>
+          <p className={`text-[15px] font-black leading-tight ${tutorialActive ? textClass : t.title}`}>{title}</p>
         </div>
         <div className="relative z-10 mt-1.5 rounded-xl bg-slate-950/45 border border-slate-800 px-2.5 py-2 opacity-55">
           <p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">{label}</p>
@@ -311,7 +323,7 @@ function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cos
           <p className="text-xs font-black mt-1 text-slate-400">{add}</p>
         </div>
         <div className="absolute inset-x-0 top-16 bottom-3 z-20 flex items-center justify-center pointer-events-none">
-          <button type="button" onClick={onBuy} disabled={disabled} className={`pointer-events-auto w-24 h-[88px] rounded-2xl border-2 text-xs font-black shadow-xl transition active:scale-[0.98] ${disabled ? "bg-slate-800 border-slate-700 text-slate-500" : `${t.button} border-white/30`}`}>
+          <button type="button" onClick={onBuy} disabled={disabled} className={`pointer-events-auto w-24 h-[88px] rounded-2xl border-2 text-xs font-black shadow-xl transition active:scale-[0.98] ${disabled ? "bg-slate-800 border-slate-700 text-slate-500" : buttonClass}`}>
             <div className="flex h-full w-full flex-col items-center justify-center">
               <span className="text-2xl">{title === "Coach’s Challenge" ? "📋" : "🔒"}</span>
               <span>{title === "Coach’s Challenge" ? "Bribe the Refs" : "Unlock"}</span>
@@ -324,43 +336,73 @@ function SingleTrackUpgradeCard({ title, theme = "lab", label, current, add, cos
   }
 
   return (
-    <div className={`relative col-span-2 rounded-xl border shadow-sm p-2.5 ${maxed ? "bg-emerald-950/40 border-emerald-500/50" : t.card}`}>
+    <div data-shop-tour={tourId || undefined} className={`relative col-span-2 rounded-xl border shadow-sm p-2.5 ${cardClass}`}>
       {InfoPopup}
       {InfoButton}
       <div className="flex items-center gap-2 min-w-0 pr-8">
-        <p className={`text-[15px] font-black leading-tight ${maxed ? "text-emerald-200" : t.title}`}>{title}</p>
+        <p className={`text-[15px] font-black leading-tight ${tutorialActive ? textClass : maxed ? "text-emerald-200" : t.title}`}>{title}</p>
       </div>
-      <div className="mt-1.5 rounded-xl bg-slate-950/70 border border-slate-800 px-2.5 py-1.5">
+      <div className={`mt-1.5 rounded-xl border px-2.5 py-1.5 ${innerClass}`}>
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">{label}</p>
-            <p className="text-sm font-black text-slate-100 mt-1 leading-tight">{current}</p>
+            <p className={`text-[10px] uppercase tracking-wide leading-none ${tutorialActive ? textClass : "text-slate-500"}`}>{label}</p>
+            <p className={`text-sm font-black mt-1 leading-tight ${tutorialActive ? textClass : "text-slate-100"}`}>{current}</p>
           </div>
           <UpgradeButton onClick={onBuy} disabled={disabled || maxed} className={`rounded-lg px-3 py-1.5 text-[11px] font-black ${buttonClass}`}>{maxed ? "Maxed" : `Upgrade ${formatNumber(cost)} pts`}</UpgradeButton>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <div className="h-2 flex-1 rounded-full bg-slate-800 overflow-hidden border border-slate-700"><div className={`h-full rounded-full ${t.bar}`} style={{ width: `${Math.min(100, (level / max) * 100)}%` }} /></div>
-          <p className="text-[10px] font-black text-slate-300 w-10 text-right">{level}/{max}</p>
+          <p className={`text-[10px] font-black w-10 text-right ${tutorialActive ? textClass : "text-slate-300"}`}>{level}/{max}</p>
         </div>
-        <p className={`text-xs font-black mt-1 ${maxed ? "text-emerald-300" : t.add}`}>{maxed ? "Maxed" : add}</p>
+        <p className={`text-xs font-black mt-1 ${tutorialActive ? textClass : maxed ? "text-emerald-300" : t.add}`}>{maxed ? "Maxed" : add}</p>
       </div>
     </div>
   );
 }
 
-function ShotUpgradeCard({ title, theme = "lab", accuracyCurrent, accuracyAdd, accuracyCost, accuracyLevel, accuracyMax, onBuyAccuracy, valueCurrent, valueAdd, valueCost, valueLevel, valueMax, onBuyValue, currentPoints, locked = false, unlockCost = 0, onUnlock = null }) {
+function ShotUpgradeCard({ title, theme = "lab", accuracyCurrent, accuracyAdd, accuracyCost, accuracyLevel, accuracyMax, onBuyAccuracy, valueCurrent, valueAdd, valueCost, valueLevel, valueMax, onBuyValue, currentPoints, locked = false, unlockCost = 0, onUnlock = null, highlight = false, tourId = null, tutorialStyle = null }) {
   const t = THEME[theme] || THEME.lab;
+  const isLayupTutorial = !!highlight && tutorialStyle === "layupShot";
+  const cardClass = isLayupTutorial
+    ? "!bg-gradient-to-br !from-orange-200 !via-amber-200 !to-orange-400 !border-white text-slate-950 shadow-[0_0_0_3px_rgba(255,255,255,0.95),0_0_46px_rgba(251,146,60,1)]"
+    : t.card;
+  const innerClass = isLayupTutorial
+    ? "bg-white/80 border-white text-slate-950 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.9)]"
+    : "bg-slate-950/70 border-slate-800";
+  const textClass = isLayupTutorial ? "text-orange-950" : "";
+  const buttonHighlightClass = isLayupTutorial
+    ? "!bg-orange-950 !text-white !border !border-white ring-4 ring-white shadow-[0_0_24px_rgba(255,255,255,0.95),0_0_18px_rgba(251,146,60,0.95)] animate-pulse"
+    : highlight
+    ? "ring-4 ring-white shadow-[0_0_24px_rgba(255,255,255,0.85)] animate-pulse"
+    : "";
+
   const Row = ({ label, current, add, cost, level, max, onBuy }) => {
     const maxed = level >= max;
     const disabled = currentPoints < cost;
-    return <div className="rounded-xl bg-slate-950/70 border border-slate-800 px-2.5 py-1.5"><div className="flex items-center justify-between gap-2"><div><p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">{label}</p><p className="text-sm font-black text-slate-100 mt-1 leading-tight">{current}</p></div><UpgradeButton onClick={onBuy} disabled={disabled || maxed} className={`rounded-lg px-3 py-1.5 text-[11px] font-black ${maxed ? "bg-emerald-700/40 text-emerald-200" : disabled ? "bg-slate-800 text-slate-500" : t.button}`}>{maxed ? "Maxed" : `Upgrade ${formatNumber(cost)} pts`}</UpgradeButton></div><div className="mt-2 flex items-center gap-2"><div className="h-2 flex-1 rounded-full bg-slate-800 overflow-hidden border border-slate-700"><div className={`h-full rounded-full ${t.bar}`} style={{ width: `${Math.min(100, (level / max) * 100)}%` }} /></div><p className="text-[10px] font-black text-slate-300 w-10 text-right">{level}/{max}</p></div><p className={`text-xs font-black mt-1 ${maxed ? "text-emerald-300" : t.add}`}>{maxed ? "Maxed" : add}</p></div>;
+    const buttonClass = maxed ? "bg-emerald-700/40 text-emerald-200" : disabled ? "bg-slate-800 text-slate-500" : `${t.button} ${buttonHighlightClass}`;
+    return (
+      <div className={`rounded-xl border px-2.5 py-1.5 ${innerClass}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className={`text-[10px] uppercase tracking-wide leading-none ${textClass || "text-slate-500"}`}>{label}</p>
+            <p className={`text-sm font-black mt-1 leading-tight ${textClass || "text-slate-100"}`}>{current}</p>
+          </div>
+          <UpgradeButton onClick={onBuy} disabled={disabled || maxed} className={`rounded-lg px-3 py-1.5 text-[11px] font-black ${buttonClass}`}>{maxed ? "Maxed" : `Upgrade ${formatNumber(cost)} pts`}</UpgradeButton>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-2 flex-1 rounded-full bg-slate-800 overflow-hidden border border-slate-700"><div className={`h-full rounded-full ${t.bar}`} style={{ width: `${Math.min(100, (level / max) * 100)}%` }} /></div>
+          <p className={`text-[10px] font-black w-10 text-right ${textClass || "text-slate-300"}`}>{level}/{max}</p>
+        </div>
+        <p className={`text-xs font-black mt-1 ${textClass || (maxed ? "text-emerald-300" : t.add)}`}>{maxed ? "Maxed" : add}</p>
+      </div>
+    );
   };
 
   if (locked) {
-    return <div className={`col-span-2 rounded-xl border shadow-sm p-2.5 ${t.card} relative overflow-hidden min-h-[196px]`}><div className="absolute inset-0 bg-slate-950/45 z-0" /><p className={`relative z-10 text-base font-black leading-tight ${t.title}`}>{title}</p><div className="relative z-10 mt-1.5 grid grid-cols-1 gap-1.5 opacity-50"><div className="rounded-xl bg-slate-950/45 border border-slate-800 px-3 py-2"><p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">Make Chance</p><p className="text-sm font-black text-slate-300 mt-1 leading-tight">{accuracyCurrent}</p><div className="mt-2 h-2 rounded-full bg-slate-800 border border-slate-700" /><p className="text-xs font-black mt-1 text-slate-400">{accuracyAdd}</p></div><div className="rounded-xl bg-slate-950/45 border border-slate-800 px-3 py-2"><p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">Shot Value</p><p className="text-sm font-black text-slate-300 mt-1 leading-tight">{valueCurrent}</p><div className="mt-2 h-2 rounded-full bg-slate-800 border border-slate-700" /><p className="text-xs font-black mt-1 text-slate-400">{valueAdd}</p></div></div><div className="absolute inset-x-0 top-14 bottom-2 z-20 flex items-center justify-center pointer-events-none"><button type="button" onClick={onUnlock} disabled={currentPoints < unlockCost} className={`pointer-events-auto w-28 h-28 rounded-3xl border-2 text-sm font-black shadow-xl transition active:scale-[0.98] ${currentPoints < unlockCost ? "bg-slate-800 border-slate-700 text-slate-500" : `${t.button} border-white/30`}`}><div className="flex h-full w-full flex-col items-center justify-center"><span className="text-2xl">{title === "Coach’s Challenge" ? "📋" : "🔒"}</span><span>Unlock</span><span className="text-sm mt-1">{formatNumber(unlockCost)} pts</span></div></button></div></div>;
+    return <div data-shop-tour={tourId || undefined} className={`col-span-2 rounded-xl border shadow-sm p-2.5 ${cardClass} relative overflow-hidden min-h-[196px]`}><div className="absolute inset-0 bg-slate-950/45 z-0" /><p className={`relative z-10 text-base font-black leading-tight ${textClass || t.title}`}>{title}</p><div className="relative z-10 mt-1.5 grid grid-cols-1 gap-1.5 opacity-50"><div className="rounded-xl bg-slate-950/45 border border-slate-800 px-3 py-2"><p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">Make Chance</p><p className="text-sm font-black text-slate-300 mt-1 leading-tight">{accuracyCurrent}</p><div className="mt-2 h-2 rounded-full bg-slate-800 border border-slate-700" /><p className="text-xs font-black mt-1 text-slate-400">{accuracyAdd}</p></div><div className="rounded-xl bg-slate-950/45 border border-slate-800 px-3 py-2"><p className="text-[10px] uppercase tracking-wide text-slate-500 leading-none">Shot Value</p><p className="text-sm font-black text-slate-300 mt-1 leading-tight">{valueCurrent}</p><div className="mt-2 h-2 rounded-full bg-slate-800 border border-slate-700" /><p className="text-xs font-black mt-1 text-slate-400">{valueAdd}</p></div></div><div className="absolute inset-x-0 top-14 bottom-2 z-20 flex items-center justify-center pointer-events-none"><button type="button" onClick={onUnlock} disabled={currentPoints < unlockCost} className={`pointer-events-auto w-28 h-28 rounded-3xl border-2 text-sm font-black shadow-xl transition active:scale-[0.98] ${currentPoints < unlockCost ? "bg-slate-800 border-slate-700 text-slate-500" : `${t.button} border-white/30`}`}><div className="flex h-full w-full flex-col items-center justify-center"><span className="text-2xl">{title === "Challenge the Play" ? "📋" : "🔒"}</span><span>Unlock</span><span className="text-sm mt-1">{formatNumber(unlockCost)} pts</span></div></button></div></div>;
   }
 
-  return <div className={`col-span-2 rounded-xl border shadow-sm p-2.5 ${t.card}`}><p className={`text-base font-black leading-tight ${t.title}`}>{title}</p><div className="mt-1.5 grid grid-cols-1 gap-1.5"><Row label="Make Chance" current={accuracyCurrent} add={accuracyAdd} cost={accuracyCost} level={accuracyLevel} max={accuracyMax} onBuy={onBuyAccuracy} /><Row label="Shot Value" current={valueCurrent} add={valueAdd} cost={valueCost} level={valueLevel} max={valueMax} onBuy={onBuyValue} /></div></div>;
+  return <div data-shop-tour={tourId || undefined} className={`col-span-2 rounded-xl border shadow-sm p-2.5 ${cardClass}`}><p className={`text-base font-black leading-tight ${textClass || t.title}`}>{title}</p><div className="mt-1.5 grid grid-cols-1 gap-1.5"><Row label="Make Chance" current={accuracyCurrent} add={accuracyAdd} cost={accuracyCost} level={accuracyLevel} max={accuracyMax} onBuy={onBuyAccuracy} /><Row label="Shot Value" current={valueCurrent} add={valueAdd} cost={valueCost} level={valueLevel} max={valueMax} onBuy={onBuyValue} /></div></div>;
 }
 
 function TrophyCard({ title, text, buttonText, disabled, maxed, onClick, className, titleClassName, buttonClassName }) {
@@ -561,7 +603,7 @@ export default function BasketballGame() {
   const [showNewGamePrompt, setShowNewGamePrompt] = useState(false);
   const [confirmFreshStart, setConfirmFreshStart] = useState(false);
   const [transitionScreen, setTransitionScreen] = useState(null);
-  const [startingPoints, setStartingPoints] = useState(5);
+  const [startingPoints, setStartingPoints] = useState(7);
   const [testPointsInput, setTestPointsInput] = useState("5");
   const [currentPoints, setCurrentPoints] = useState(0);
   const [attemptsUsed, setAttemptsUsed] = useState(0);
@@ -613,6 +655,10 @@ export default function BasketballGame() {
   const [openLook, setOpenLook] = useState(null);
   const [openLookCooldown, setOpenLookCooldown] = useState(false);
   const [lockedPrompt, setLockedPrompt] = useState(null);
+  const [showCourtTutorial, setShowCourtTutorial] = useState(false);
+  const [courtTutorialStep, setCourtTutorialStep] = useState(0);
+  const [showShopTutorial, setShowShopTutorial] = useState(false);
+  const [shopTutorialStep, setShopTutorialStep] = useState(0);
   const [upgrades, setUpgrades] = useState({ extraShots: 0, layup: 0, freeThrow: 0, three: 0, halfCourt: 0, freeThrowUnlocked: false, threeUnlocked: false, halfCourtUnlocked: false, layupSpecialist: 0, freeThrowSpecialist: 0, threeSpecialist: 0, halfCourtSpecialist: 0, hotHand: 0, doubleRim: 0, goldenBall: 0, moveBall: 0, playoffTicket: 0, doubleOrNothing: 0, superGolden: 0, coachChallenge: 0, courtVision: 0 });
 
   function saveGame(silent = false) {
@@ -718,6 +764,139 @@ export default function BasketballGame() {
     setCrownStats(buildCrownStatsSnapshot());
   }, [hasWon, currentPoints, bestStreak, careerStats, tripPointsEarned, courtRound]);
 
+  const courtTutorialSteps = [
+    {
+      title: "Quick Tutorial",
+      text: "This is your court. Let’s cover the basics real quick.",
+      target: "intro",
+      placement: "default",
+    },
+    {
+      title: "Tap a location to shoot",
+      text: "Tap a shot location to shoot. Each location has its own point value and make chance.",
+      target: "layup",
+      placement: "default",
+    },
+    {
+      title: "Make Chance",
+      text: "This number is the shot’s make chance. Higher odds are safer, and you can upgrade shot percent in the shop to make each location more reliable.",
+      target: "odds",
+      placement: "default",
+    },
+    {
+      title: "New Shot Locations",
+      text: "As you scale up, you can unlock more shot spots. This temporary Three Pointer is a preview of a higher risk, higher reward shot.",
+      target: "locations",
+      placement: "default",
+    },
+    {
+      title: "Balls Left",
+      text: "These balls track your shots for the trip. They show makes, misses, and points earned, and you can buy more balls in the shop.",
+      target: "balls",
+      placement: "default",
+    },
+    {
+      title: "Scoreboard",
+      text: "This is your score. Made shots add points, and those points are what you spend in the Upgrade Shop.",
+      target: "scoreboard",
+      placement: "center",
+    },
+  ];
+
+  const activeCourtTutorialTarget = showCourtTutorial ? courtTutorialSteps[courtTutorialStep]?.target : null;
+  const activeCourtTutorialPlacement = showCourtTutorial ? courtTutorialSteps[courtTutorialStep]?.placement || "default" : "default";
+  const isIntroCourtTutorialStep = showCourtTutorial && activeCourtTutorialTarget === "intro";
+
+  function finishCourtTutorial() {
+    try {
+      window.localStorage.setItem(COURT_TUTORIAL_KEY, "1");
+    } catch {}
+    setShowCourtTutorial(false);
+  }
+
+  function nextCourtTutorialStep() {
+    if (courtTutorialStep >= courtTutorialSteps.length - 1) {
+      finishCourtTutorial();
+      return;
+    }
+    setCourtTutorialStep((current) => current + 1);
+  }
+
+  function previousCourtTutorialStep() {
+    setCourtTutorialStep((current) => Math.max(0, current - 1));
+  }
+
+  function startCourtTutorialIfNeeded() {
+    try {
+      if (window.localStorage.getItem(COURT_TUTORIAL_KEY)) return;
+    } catch {}
+    setCourtTutorialStep(0);
+    setShowCourtTutorial(true);
+  }
+
+  useEffect(() => {
+    if (screen !== "court") return;
+    const timer = window.setTimeout(startCourtTutorialIfNeeded, 500);
+    return () => window.clearTimeout(timer);
+  }, [screen]);
+
+  useEffect(() => {
+    if (!showCourtTutorial) return;
+    if (courtTutorialSteps[courtTutorialStep]?.target !== "layup") return;
+    let startTimer = null;
+    let clearTimer = null;
+    let loopTimer = null;
+
+    const runPreviewShot = () => {
+      setLastResult(null);
+      setPointsPop(null);
+      setBigShotMessage(null);
+      setShotCallouts(null);
+      setLastMadeBreakdown(null);
+      setIsShooting(true);
+      setActiveShot({
+        ...SHOT_CONFIG.layup,
+        made: true,
+        golden: false,
+        superGolden: false,
+        bouncedIn: false,
+        missSide: "left",
+        onFire: false,
+      });
+      setShotAnimKey((current) => current + 1);
+      clearTimer = window.setTimeout(() => {
+        setActiveShot(null);
+        setIsShooting(false);
+        loopTimer = window.setTimeout(runPreviewShot, 650);
+      }, 1700);
+    };
+
+    startTimer = window.setTimeout(runPreviewShot, 450);
+
+    return () => {
+      if (startTimer) window.clearTimeout(startTimer);
+      if (clearTimer) window.clearTimeout(clearTimer);
+      if (loopTimer) window.clearTimeout(loopTimer);
+      setActiveShot(null);
+      setIsShooting(false);
+    };
+  }, [showCourtTutorial, courtTutorialStep]);
+
+  function startShopTutorialIfNeeded() {
+    try {
+      if (window.localStorage.getItem(SHOP_TUTORIAL_KEY)) return;
+    } catch {}
+    setShopTutorialStep(0);
+    setShowShopTutorial(true);
+    setLockerScreen("shots");
+  }
+
+  useEffect(() => {
+    if (screen !== "lockerRoom") return;
+    const timer = window.setTimeout(startShopTutorialIfNeeded, 450);
+    return () => window.clearTimeout(timer);
+  }, [screen]);
+
   const shotsPerTrip = 2 + upgrades.extraShots;
   const shotsRemaining = Math.max(0, shotsPerTrip - attemptsUsed);
   const doubleRimChance = upgrades.doubleRim * 5;
@@ -775,7 +954,7 @@ export default function BasketballGame() {
 
   function goLockerRoom() {
     setTransitionScreen("toLocker"); setLastResult(null); setPointsPop(null); setBigShotMessage(null); setShotCallouts(null); setLastMadeBreakdown(null); setActiveShot(null); setIsShooting(false); setAttemptsUsed(0); setStreak(0); setLastShotMultiplier(1); setCourtTripOver(false); setTripPointsEarned(0); setMissShakeKey(0); setTripShots([]); setChallengeOffer(null); setChallengeFlashKey(null); setOpenLook(null); setOpenLookCooldown(false);
-    window.setTimeout(() => setScreen("lockerRoom"), 1050); window.setTimeout(() => setTransitionScreen(null), 1500);
+    window.setTimeout(() => { setScreen("lockerRoom"); window.setTimeout(startShopTutorialIfNeeded, 500); }, 1050); window.setTimeout(() => setTransitionScreen(null), 1500);
   }
   function startCourt() {
     setTransitionScreen("toCourt"); setLastResult(null); setPointsPop(null); setBigShotMessage(null); setShotCallouts(null); setLastMadeBreakdown(null); setActiveShot(null); setIsShooting(false); setAttemptsUsed(0); setStreak(0); setLastShotMultiplier(1); setCourtTripOver(false); setTripPointsEarned(0); setMissShakeKey(0); setTripShots([]); setChallengeOffer(null); setChallengeFlashKey(null); setOpenLook(null); setOpenLookCooldown(false);
@@ -1047,6 +1226,8 @@ export default function BasketballGame() {
   function beginFreshGame() {
     try {
       window.localStorage.removeItem(SAVE_KEY);
+      window.localStorage.removeItem(SHOP_TUTORIAL_KEY);
+      window.localStorage.removeItem(COURT_TUTORIAL_KEY);
     } catch {}
     setSaveExists(false);
     setShowNewGamePrompt(false);
@@ -1150,6 +1331,74 @@ export default function BasketballGame() {
     setScreen("title");
   }
 
+  const shopTutorialSteps = [
+    {
+      title: "Shot Lab",
+      text: "The Shot Lab is where you spend points to get stronger between trips. Start with more balls, then improve your shots.",
+      target: "shots",
+    },
+    {
+      title: "Extra Balls",
+      text: "Start here. Extra Balls gives you more shots every trip, which means more scoring chances and more chances to build a streak.",
+      target: "extraShots",
+    },
+    {
+      title: "Shot Upgrades",
+      text: "Each shot card has two upgrades: Make Chance helps the ball go in, and Shot Value makes each bucket pay more points.",
+      target: "shotCards",
+    },
+    {
+      title: "Power-Ups",
+      text: "This tab has the fun stuff: Hot Hand, Golden Ball, Rim Rescue, Open Look, and Coach’s Challenge.",
+      target: "bonus",
+    },
+    {
+      title: "High Stakes",
+      text: "When your bank gets bigger, come here for DeepCourt Gambit or to claim the Crown.",
+      target: "mystery",
+    },
+  ];
+
+  function finishShopTutorial() {
+    try {
+      window.localStorage.setItem(SHOP_TUTORIAL_KEY, "1");
+    } catch {}
+    setShowShopTutorial(false);
+    setLockerScreen("shots");
+    window.setTimeout(() => {
+      const target = document.querySelector('[data-shop-tour="shots"]');
+      target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 150);
+  }
+
+  function nextShopTutorialStep() {
+    if (shopTutorialStep >= shopTutorialSteps.length - 1) {
+      finishShopTutorial();
+      return;
+    }
+    const nextStep = shopTutorialStep + 1;
+    setShopTutorialStep(nextStep);
+    const target = shopTutorialSteps[nextStep]?.target;
+    if (["shots", "shotCards", "extraShots"].includes(target)) setLockerScreen("shots");
+    if (target === "bonus") setLockerScreen("bonus");
+    if (target === "mystery") setLockerScreen("mystery");
+  }
+
+  const activeShopTutorialTarget = showShopTutorial ? shopTutorialSteps[shopTutorialStep]?.target : null;
+
+  useEffect(() => {
+    if (!showShopTutorial || !activeShopTutorialTarget) return;
+    if (["shots", "shotCards", "extraShots"].includes(activeShopTutorialTarget) && lockerScreen !== "shots") return;
+    if (activeShopTutorialTarget === "bonus" && lockerScreen !== "bonus") return;
+    if (activeShopTutorialTarget === "mystery" && lockerScreen !== "mystery") return;
+    const timer = window.setTimeout(() => {
+      const scrollTarget = activeShopTutorialTarget === "bonus" ? "hotHand" : activeShopTutorialTarget;
+      const target = document.querySelector(`[data-shop-tour="${scrollTarget}"]`);
+      target?.scrollIntoView({ behavior: "smooth", block: activeShopTutorialTarget === "shotCards" || activeShopTutorialTarget === "bonus" ? "start" : activeShopTutorialTarget === "shots" ? "nearest" : "center" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [showShopTutorial, activeShopTutorialTarget, lockerScreen]);
+
   const shopItems = [
     { type: "section", title: "Shots", theme: "lab" },
     { type: "singleTrack", key: "extraShots", theme: "possessions", title: "Extra Balls", label: "Balls Per Turn", current: `${shotsPerTrip} balls`, add: "+1 ball", cost: EXTRA_BALL_COSTS[upgrades.extraShots] || 0, level: upgrades.extraShots, max: EXTRA_BALL_COSTS.length, action: () => buyUpgrade("extraShots", EXTRA_BALL_COSTS[upgrades.extraShots], EXTRA_BALL_COSTS.length) },
@@ -1217,7 +1466,7 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
           </div>
 
           <div className="relative z-10 mt-2 grid grid-cols-2 gap-2 shrink-0">
-            <button type="button" onClick={() => setScreen("lockerRoom")} className="rounded-2xl border border-sky-200/60 bg-sky-500 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_18px_rgba(14,165,233,0.35)] active:scale-[0.98]">Locker Room</button>
+            <button type="button" onClick={() => setScreen("lockerRoom")} className="rounded-2xl border border-sky-200/60 bg-sky-500 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_18px_rgba(14,165,233,0.35)] active:scale-[0.98]">Upgrade Shop</button>
             <button type="button" onClick={() => setScreen("title")} className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-200 active:scale-[0.98]">Main Menu</button>
           </div>
         </Card>
@@ -1330,13 +1579,13 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
               <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-3">
                 <div className="flex items-start gap-3">
                   <div className="w-24 shrink-0 rounded-2xl border border-slate-700 bg-slate-900 p-2 shadow-inner">
-                    <div className="rounded-lg border border-sky-400/50 bg-sky-500 px-2 py-1 text-center text-[8px] font-black text-white">Locker Room</div>
+                    <div className="rounded-lg border border-sky-400/50 bg-sky-500 px-2 py-1 text-center text-[8px] font-black text-white">Upgrade Shop</div>
                     <div className="mt-1 rounded-lg border border-orange-400/50 bg-orange-500 px-2 py-1 text-center text-[8px] font-black text-white">Upgrade</div>
                     <div className="mt-1 rounded-lg border border-cyan-400/50 bg-cyan-500 px-2 py-1 text-center text-[8px] font-black text-white">Power-Up</div>
                   </div>
                   <div className="min-w-0">
                     <p className="text-sky-300 font-black">📈 Spend pts</p>
-                    <p className="mt-1 text-sm font-bold leading-snug text-slate-300">Use the Locker Room to buy more balls, better odds, bigger shot values, and power-ups.</p>
+                    <p className="mt-1 text-sm font-bold leading-snug text-slate-300">Use the Upgrade Shop to buy more balls, better odds, bigger shot values, and power-ups.</p>
                   </div>
                 </div>
               </div>
@@ -1454,7 +1703,7 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
               <p className="mt-0.5 text-3xl font-black leading-none text-white">{formatNumber(currentPoints)} <span className="text-sm text-slate-400">pts</span></p>
               {activeWager > 0 && <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-purple-300">Wager: {formatNumber(activeWager)} pts</p>}
             </div>
-            <button type="button" onClick={() => setScreen("lockerRoom")} className="rounded-xl border border-sky-300/50 bg-sky-500 px-3 py-2 text-[10px] font-black text-white shadow-lg active:scale-[0.98] hover:bg-sky-600">Locker Room</button>
+            <button type="button" onClick={() => setScreen("lockerRoom")} className="rounded-xl border border-sky-300/50 bg-sky-500 px-3 py-2 text-[10px] font-black text-white shadow-lg active:scale-[0.98] hover:bg-sky-600">Upgrade Shop</button>
           </div>
         </Card>
 
@@ -1546,13 +1795,13 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
           </div>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
-          <button type="button" onClick={() => setLockerScreen("shots")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "shots" ? "bg-orange-500 border-orange-300 text-white shadow-[0_0_14px_rgba(249,115,22,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"}`}>
+          <button type="button" data-shop-tour="shots" onClick={() => setLockerScreen("shots")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "shots" ? "bg-orange-500 border-orange-300 text-white shadow-[0_0_14px_rgba(249,115,22,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"} ${["shots", "extraShots", "shotCards"].includes(activeShopTutorialTarget) ? "relative z-[95] ring-4 ring-orange-200 shadow-[0_0_26px_rgba(251,146,60,0.8)]" : ""}`}>
             <div className="flex flex-col items-center justify-center gap-1"><span className="text-base leading-none">🏀</span><span className="leading-none">Shot Lab</span></div>
           </button>
-          <button type="button" onClick={() => setLockerScreen("bonus")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "bonus" ? "bg-red-500 border-red-300 text-white shadow-[0_0_14px_rgba(239,68,68,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"}`}>
+          <button type="button" onClick={() => setLockerScreen("bonus")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "bonus" ? "bg-red-500 border-red-300 text-white shadow-[0_0_14px_rgba(239,68,68,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"} ${activeShopTutorialTarget === "bonus" ? "relative z-[95] ring-4 ring-red-200 shadow-[0_0_26px_rgba(248,113,113,0.8)]" : ""}`}>
             <div className="flex flex-col items-center justify-center gap-1"><span className="text-base leading-none">⚡</span><span className="leading-none">Power-Ups</span></div>
           </button>
-          <button type="button" onClick={() => setLockerScreen("mystery")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "mystery" ? "bg-violet-500 border-violet-300 text-white shadow-[0_0_14px_rgba(139,92,246,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"}`}>
+          <button type="button" onClick={() => setLockerScreen("mystery")} className={`rounded-xl border px-2 py-2 text-[10px] font-black active:scale-[0.98] ${lockerScreen === "mystery" ? "bg-violet-500 border-violet-300 text-white shadow-[0_0_14px_rgba(139,92,246,0.45)]" : "bg-slate-950 border-slate-700 text-slate-400"} ${activeShopTutorialTarget === "mystery" ? "relative z-[95] ring-4 ring-violet-200 shadow-[0_0_26px_rgba(167,139,250,0.8)]" : ""}`}>
             <div className="flex flex-col items-center justify-center gap-1"><span className="text-base leading-none">🎲</span><span className="leading-none">High Stakes</span></div>
           </button>
         </div>
@@ -1569,19 +1818,51 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
                 const t = THEME[item.theme] || THEME.lab;
                 return <div key={`section-${index}`} className={`col-span-2 mt-2 first:mt-0 rounded-xl border px-3 py-2 ${t.header}`}><p className="text-[9px] uppercase tracking-[0.2em] font-black">{item.title}</p></div>;
               }
-              if (item.type === "singleTrack") return <SingleTrackUpgradeCard key={item.key} {...item} onBuy={item.action} currentPoints={currentPoints} />;
-              if (item.type === "shotUpgrade") return <ShotUpgradeCard key={item.key} title={item.title} theme="lab" accuracyCurrent={item.accuracyCurrent} accuracyAdd={item.accuracyAdd} accuracyCost={item.accuracyCost} accuracyLevel={item.accuracyLevel} accuracyMax={item.accuracyMax} onBuyAccuracy={item.accuracyAction} valueCurrent={item.valueCurrent} valueAdd={item.valueAdd} valueCost={item.valueCost} valueLevel={item.valueLevel} valueMax={item.valueMax} onBuyValue={item.valueAction} currentPoints={currentPoints} locked={!!item.locked} unlockCost={item.unlockCost ?? 0} onUnlock={item.unlockAction} />;
-              if (item.type === "playoff") return <div key="playoff" onClick={(event) => event.stopPropagation()} className="col-span-2 rounded-xl border border-white/20 bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(88,28,135,0.28),rgba(30,64,175,0.22),rgba(5,150,105,0.18),rgba(202,138,4,0.18),rgba(190,24,93,0.2))] p-3.5 shadow-[0_0_24px_rgba(255,255,255,0.06)]"><div className="flex items-start justify-between gap-3"><div><p className="text-[15px] font-black text-white">DeepCourt Gambit</p><p className="mt-1 text-[11px] leading-snug text-slate-300">Enter the challenge, place your wager, and take the deep shot.</p></div><div className="rounded-xl border border-white/20 bg-white/10 px-2.5 py-1.5 text-center"><p className="text-lg font-black leading-none text-white">{currentPoints >= PLAYOFF_TICKET_COST ? `${doubleOrNothingChance}%` : "?"}</p><p className="text-[7px] uppercase tracking-wide font-black text-slate-300">Make</p></div></div><button type="button" disabled={currentPoints < PLAYOFF_TICKET_COST} onClick={openPlayoffDoor} className={`mt-3 w-full rounded-xl px-3 py-2 text-xs font-black ${currentPoints < PLAYOFF_TICKET_COST ? "bg-slate-800 text-slate-500" : "bg-white/12 hover:bg-white/18 text-white border border-white/20"}`}>{currentPoints >= PLAYOFF_TICKET_COST ? "Enter Challenge" : `Reach ${formatNumber(PLAYOFF_TICKET_COST)} pts`}</button>{currentPoints >= PLAYOFF_TICKET_COST && <><div className="my-3 flex items-center gap-2"><div className="h-px flex-1 bg-white/12" /><span className="text-[8px] uppercase tracking-[0.18em] font-black text-slate-400">Upgrade</span><div className="h-px flex-1 bg-white/12" /></div><button type="button" disabled={upgrades.doubleOrNothing > 0 || currentPoints < DOUBLE_OR_NOTHING_UPGRADE_COST} onClick={buyDoubleOrNothingUpgrade} className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black ${upgrades.doubleOrNothing > 0 ? "bg-emerald-700/40 text-emerald-200" : currentPoints < DOUBLE_OR_NOTHING_UPGRADE_COST ? "bg-slate-800 text-slate-500" : confirmDoubleOrNothingUpgrade ? "bg-red-500 hover:bg-red-600 text-white" : "bg-violet-500 hover:bg-violet-600 text-white"}`}>{upgrades.doubleOrNothing > 0 ? "50% Unlocked" : confirmDoubleOrNothingUpgrade ? "Are you sure? Tap again" : `Upgrade to 50% • ${formatNumber(DOUBLE_OR_NOTHING_UPGRADE_COST)} pts`}</button></>}</div>;
+              if (item.type === "singleTrack") return <SingleTrackUpgradeCard key={item.key} {...item} onBuy={item.action} currentPoints={currentPoints} highlight={activeShopTutorialTarget === item.key || (activeShopTutorialTarget === "bonus" && item.key === "hotHand")} tutorialStyle={item.key === "extraShots" ? "extraBalls" : item.key === "hotHand" ? "hotHand" : null} tourId={item.key} />;
+              if (item.type === "shotUpgrade") return <ShotUpgradeCard key={item.key} title={item.title} theme="lab" accuracyCurrent={item.accuracyCurrent} accuracyAdd={item.accuracyAdd} accuracyCost={item.accuracyCost} accuracyLevel={item.accuracyLevel} accuracyMax={item.accuracyMax} onBuyAccuracy={item.accuracyAction} valueCurrent={item.valueCurrent} valueAdd={item.valueAdd} valueCost={item.valueCost} valueLevel={item.valueLevel} valueMax={item.valueMax} onBuyValue={item.valueAction} currentPoints={currentPoints} locked={!!item.locked} unlockCost={item.unlockCost ?? 0} onUnlock={item.unlockAction} highlight={activeShopTutorialTarget === "shotCards" && item.key === "layupBundle"} tourId={item.key === "layupBundle" ? "shotCards" : null} tutorialStyle={item.key === "layupBundle" ? "layupShot" : null} />;
+              if (item.type === "playoff") return <div key="playoff" data-shop-tour="mystery" onClick={(event) => event.stopPropagation()} className="col-span-2 rounded-xl border border-white/20 bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(88,28,135,0.28),rgba(30,64,175,0.22),rgba(5,150,105,0.18),rgba(202,138,4,0.18),rgba(190,24,93,0.2))] p-3.5 shadow-[0_0_24px_rgba(255,255,255,0.06)]"><div className="flex items-start justify-between gap-3"><div><p className="text-[15px] font-black text-white">DeepCourt Gambit</p><p className="mt-1 text-[11px] leading-snug text-slate-300">Enter the challenge, place your wager, and take the deep shot.</p></div><div className="rounded-xl border border-white/20 bg-white/10 px-2.5 py-1.5 text-center"><p className="text-lg font-black leading-none text-white">{currentPoints >= PLAYOFF_TICKET_COST ? `${doubleOrNothingChance}%` : "?"}</p><p className="text-[7px] uppercase tracking-wide font-black text-slate-300">Make</p></div></div><button type="button" disabled={currentPoints < PLAYOFF_TICKET_COST} onClick={openPlayoffDoor} className={`mt-3 w-full rounded-xl px-3 py-2 text-xs font-black ${currentPoints < PLAYOFF_TICKET_COST ? "bg-slate-800 text-slate-500" : "bg-white/12 hover:bg-white/18 text-white border border-white/20"}`}>{currentPoints >= PLAYOFF_TICKET_COST ? "Enter Challenge" : `Reach ${formatNumber(PLAYOFF_TICKET_COST)} pts`}</button>{currentPoints >= PLAYOFF_TICKET_COST && <><div className="my-3 flex items-center gap-2"><div className="h-px flex-1 bg-white/12" /><span className="text-[8px] uppercase tracking-[0.18em] font-black text-slate-400">Upgrade</span><div className="h-px flex-1 bg-white/12" /></div><button type="button" disabled={upgrades.doubleOrNothing > 0 || currentPoints < DOUBLE_OR_NOTHING_UPGRADE_COST} onClick={buyDoubleOrNothingUpgrade} className={`mt-2 w-full rounded-xl px-3 py-2 text-xs font-black ${upgrades.doubleOrNothing > 0 ? "bg-emerald-700/40 text-emerald-200" : currentPoints < DOUBLE_OR_NOTHING_UPGRADE_COST ? "bg-slate-800 text-slate-500" : confirmDoubleOrNothingUpgrade ? "bg-red-500 hover:bg-red-600 text-white" : "bg-violet-500 hover:bg-violet-600 text-white"}`}>{upgrades.doubleOrNothing > 0 ? "50% Unlocked" : confirmDoubleOrNothingUpgrade ? "Are you sure? Tap again" : `Upgrade to 50% • ${formatNumber(DOUBLE_OR_NOTHING_UPGRADE_COST)} pts`}</button></>}</div>;
               if (item.type === "trophy") return <TrophyCard key="trophy" title="The Crown" text={hasWon ? "Crown claimed. Tap here anytime to revisit your winner stats." : "The finish line. Reach the mark, claim the crown, win the grind."} buttonText={currentPoints >= TROPHY_COST ? "Claim the Crown" : `Reach ${formatNumber(TROPHY_COST)} pts`} disabled={currentPoints < TROPHY_COST} maxed={hasWon} onClick={hasWon ? openCrownStats : buyTrophy} className="bg-gradient-to-br from-yellow-300/22 via-amber-400/22 to-orange-500/20 border-yellow-300/55 shadow-[0_0_28px_rgba(250,204,21,0.16)]" titleClassName="text-yellow-200" buttonClassName="bg-yellow-400 hover:bg-yellow-500 text-slate-950" />;
               return null;
             })}
           </div>
         </div>
+        <AnimatePresence>{showShopTutorial && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[90] flex items-end justify-center bg-slate-950/32 px-4 pb-4">
+          <motion.div initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 18, scale: 0.96 }} transition={{ type: "spring", stiffness: 190, damping: 17 }} className="w-full rounded-[28px] border-2 border-sky-200/70 bg-slate-950 p-4 text-left shadow-[0_0_36px_rgba(14,165,233,0.38)]">
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-200/50 bg-sky-500/15 text-2xl">📋</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9px] font-black uppercase tracking-[0.24em] text-sky-300">Coach’s Notes {shopTutorialStep + 1}/{shopTutorialSteps.length}</p>
+                <h3 className="mt-1 text-2xl font-black leading-none text-white">{shopTutorialSteps[shopTutorialStep]?.title}</h3>
+                <p className="mt-2 text-[13px] font-bold leading-snug text-slate-300">{shopTutorialSteps[shopTutorialStep]?.text}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setShopTutorialStep((current) => Math.max(0, current - 1))} disabled={shopTutorialStep === 0} className={`rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-wide active:scale-[0.98] ${shopTutorialStep === 0 ? "text-slate-600 opacity-55" : "text-slate-300"}`}>Back</button>
+              <button type="button" onClick={nextShopTutorialStep} className="rounded-2xl border border-sky-100 bg-sky-500 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_18px_rgba(14,165,233,0.45)] active:scale-[0.98]">{shopTutorialStep >= shopTutorialSteps.length - 1 ? "Done" : "Next"}</button>
+            </div>
+          </motion.div>
+        </motion.div>}</AnimatePresence>
       </Card>
     </Shell>
   );
 
-  return <Shell>{transitionOverlay}<div className="p-3 space-y-2 bg-slate-950 min-h-screen"><Card className="border border-slate-700 bg-slate-900"><motion.div animate={missShakeKey > 0 ? { x: missShakeKey % 2 === 0 ? [0, -8, 8, -6, 6, -3, 3, 0] : [0, 8, -8, 6, -6, 3, -3, 0], y: [0, 2, -2, 1, -1, 0] } : { x: 0, y: 0 }} transition={{ duration: 0.42, ease: "easeOut" }} className="relative h-[472px] overflow-hidden rounded-3xl border border-amber-900/40 bg-[#c98542]"><div className={`absolute left-2 top-2 ${courtTripOver ? "z-[82] rounded-2xl bg-slate-950/42 p-1 backdrop-blur-[1px]" : "z-30"} flex flex-col items-center gap-1 pointer-events-none`}>
+  return <Shell>{transitionOverlay}<div className="p-3 space-y-2 bg-slate-950 min-h-screen">
+    <AnimatePresence>{showCourtTutorial && <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }} className={`fixed inset-x-0 z-[130] mx-auto w-full max-w-md px-4 pointer-events-none ${isIntroCourtTutorialStep || activeCourtTutorialPlacement === "center" ? "top-1/2 -translate-y-1/2" : "bottom-4"}`}>
+      <div className={`rounded-[28px] border-2 border-orange-200/80 bg-slate-950 text-left shadow-[0_0_38px_rgba(249,115,22,0.42)] pointer-events-auto ${isIntroCourtTutorialStep ? "min-h-[48vh] px-5 py-7 flex flex-col justify-center text-center scale-[1.02]" : activeCourtTutorialPlacement === "center" ? "p-4 scale-[1.02]" : "p-4"}`}>
+        <div className={`${isIntroCourtTutorialStep ? "flex flex-col items-center gap-4" : "flex items-start gap-3"}`}>
+          <div className={`${isIntroCourtTutorialStep ? "flex h-20 w-20 text-5xl" : "flex h-12 w-12 text-2xl"} shrink-0 items-center justify-center rounded-2xl border border-orange-200/60 bg-orange-500/18`}>🏀</div>
+          <div className="min-w-0 flex-1">
+            <p className={`${isIntroCourtTutorialStep ? "text-[10px]" : "text-[9px]"} font-black uppercase tracking-[0.24em] text-orange-300`}>Coach’s Notes {courtTutorialStep + 1}/{courtTutorialSteps.length}</p>
+            <h3 className={`${isIntroCourtTutorialStep ? "mt-2 text-4xl leading-[0.92]" : "mt-1 text-2xl leading-none"} font-black text-white`}>{courtTutorialSteps[courtTutorialStep]?.title}</h3>
+            <p className={`${isIntroCourtTutorialStep ? "mx-auto mt-4 max-w-[280px] text-[17px] text-slate-200" : "mt-2 text-[13px] text-slate-300"} font-bold leading-snug`}>{courtTutorialSteps[courtTutorialStep]?.text}</p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setCourtTutorialStep((current) => Math.max(0, current - 1))} disabled={courtTutorialStep === 0} className={`rounded-2xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-wide active:scale-[0.98] ${courtTutorialStep === 0 ? "text-slate-600 opacity-55" : "text-slate-300"}`}>Back</button>
+          <button type="button" onClick={nextCourtTutorialStep} className="rounded-2xl border border-orange-100 bg-orange-500 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_18px_rgba(249,115,22,0.45)] active:scale-[0.98]">{courtTutorialStep >= courtTutorialSteps.length - 1 ? "Done" : "Next"}</button>
+        </div>
+      </div>
+    </motion.div>}</AnimatePresence><Card className="border border-slate-700 bg-slate-900"><motion.div animate={missShakeKey > 0 ? { x: missShakeKey % 2 === 0 ? [0, -8, 8, -6, 6, -3, 3, 0] : [0, 8, -8, 6, -6, 3, -3, 0], y: [0, 2, -2, 1, -1, 0] } : { x: 0, y: 0 }} transition={{ duration: 0.42, ease: "easeOut" }} className="relative h-[472px] overflow-hidden rounded-3xl border border-amber-900/40 bg-[#c98542]"><div data-court-tour="balls" className={`absolute left-2 top-2 ${courtTripOver ? "z-[82] rounded-2xl bg-slate-950/42 p-1 backdrop-blur-[1px]" : "z-30"} flex flex-col items-center gap-1 pointer-events-none ${activeCourtTutorialTarget === "balls" ? "z-[95] rounded-2xl bg-sky-300/35 p-1.5 ring-8 ring-sky-100 shadow-[0_0_42px_rgba(56,189,248,1)] animate-pulse" : ""}`}>
             {Array.from({ length: shotsPerTrip }).map((_, index) => {
               const item = tripShots[index];
               const isNext = index === tripShots.length && !courtTripOver;
@@ -1621,25 +1902,33 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
                 ))}
               </div></div><AnimatePresence>{activeShot && <motion.div key={`${activeShot.id}-${shotAnimKey}`} initial={{ left: `${activeShot.x}%`, top: `${activeShot.y}%` }} animate={activeShot.bouncedIn ? { left: [`${activeShot.x}%`, `${activeShot.missSide === "left" ? FRONT_RIM_LEFT.x : FRONT_RIM_RIGHT.x}%`, `${activeShot.missSide === "left" ? RIM_SAVE_DEFLECT_RIGHT.x : RIM_SAVE_DEFLECT_LEFT.x}%`, `${RIM_SAVE_CENTER.x}%`, `${BACK_RIM_TARGET.x}%`, `${MAKE_DROP_TARGET.x}%`], top: [`${activeShot.y}%`, `${activeShot.missSide === "left" ? FRONT_RIM_LEFT.y : FRONT_RIM_RIGHT.y}%`, `${activeShot.missSide === "left" ? RIM_SAVE_DEFLECT_RIGHT.y : RIM_SAVE_DEFLECT_LEFT.y}%`, `${RIM_SAVE_CENTER.y}%`, `${BACK_RIM_TARGET.y}%`, `${MAKE_DROP_TARGET.y}%`] } : activeShot.made ? { left: [`${activeShot.x}%`, `${BACK_RIM_TARGET.x}%`, `${MAKE_DROP_TARGET.x}%`], top: [`${activeShot.y}%`, `${BACK_RIM_TARGET.y}%`, `${MAKE_DROP_TARGET.y}%`] } : { left: [`${activeShot.x}%`, `${activeShot.missSide === "left" ? FRONT_RIM_LEFT.x : FRONT_RIM_RIGHT.x}%`, `${activeShot.missSide === "left" ? MISS_DEFLECT_LEFT.x : MISS_DEFLECT_RIGHT.x}%`], top: [`${activeShot.y}%`, `${activeShot.missSide === "left" ? FRONT_RIM_LEFT.y : FRONT_RIM_RIGHT.y}%`, `${activeShot.missSide === "left" ? MISS_DEFLECT_LEFT.y : MISS_DEFLECT_RIGHT.y}%`] }} transition={{ duration: activeShot.bouncedIn ? 2.05 : activeShot.made ? 1.55 : 1.3, times: activeShot.bouncedIn ? [0, 0.52, 0.68, 0.82, 0.91, 1] : activeShot.made ? [0, 0.72, 1] : [0, 0.7, 1], ease: "easeInOut" }} className="absolute z-[60] pointer-events-none w-10 h-10 -translate-x-1/2 -translate-y-1/2"><motion.div animate={activeShot.bouncedIn ? { scale: [1, 0.96, 0.9, 0.62, 0.32, 0.08], opacity: [1, 1, 1, 1, 0.96, 0] } : activeShot.made ? { scale: [1, 0.52, 0.1], opacity: [1, 1, 0] } : { scale: [1, 0.96, 0.88], opacity: [1, 1, 0] }} transition={{ duration: activeShot.bouncedIn ? 2.05 : activeShot.made ? 1.55 : 1.3, times: activeShot.bouncedIn ? [0, 0.52, 0.68, 0.82, 0.91, 1] : activeShot.made ? [0, 0.72, 1] : [0, 0.7, 1], ease: "easeInOut" }} className={`relative h-10 w-10 rounded-full border-4 shadow-2xl ${activeShot.superGolden ? "overflow-visible bg-yellow-100 border-yellow-300 shadow-[0_0_30px_rgba(255,255,255,0.95)]" : activeShot.golden ? "overflow-visible bg-yellow-300 border-yellow-600" : "overflow-visible bg-orange-500 border-orange-800"}`}>{activeShot.superGolden && <div className="absolute inset-[-16px] rounded-full bg-white/40 blur-xl pointer-events-none" />}{activeShot.onFire && !activeShot.superGolden && <HotHandFire />}<div className={`absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 ${activeShot.superGolden ? "bg-yellow-500/70" : activeShot.golden ? "bg-yellow-700/70" : "bg-orange-800/70"}`} /><div className={`absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 ${activeShot.superGolden ? "bg-yellow-500/70" : activeShot.golden ? "bg-yellow-700/70" : "bg-orange-800/70"}`} /><div className={`absolute inset-1 rounded-full border ${activeShot.superGolden ? "border-yellow-500/60" : activeShot.golden ? "border-yellow-700/50" : "border-orange-800/50"}`} /></motion.div></motion.div>}</AnimatePresence>{!isShooting && !courtTripOver && shotsRemaining > 0 && availableShots.map((shot) => {
               const open = isOpenLookShot(shot.id);
-              const buttonClass = open
+              const courtTutorialShotHighlight = shot.id === "layup" && ["layup", "odds"].includes(activeCourtTutorialTarget);
+              const layupOddsFlash = shot.id === "layup" && activeCourtTutorialTarget === "odds";
+              const buttonClass = courtTutorialShotHighlight
+                ? "bg-gradient-to-br from-orange-200 via-amber-200 to-orange-400 border-white text-orange-950 ring-4 ring-white shadow-[0_0_34px_rgba(251,146,60,1)] animate-pulse"
+                : open
                 ? "bg-lime-500 hover:bg-lime-600 border-lime-100 text-slate-950 shadow-[0_0_22px_rgba(132,204,22,0.85)] animate-pulse"
                 : "bg-orange-500 hover:bg-orange-600 border-orange-300 text-white";
               return (
                 <button
                   key={shot.id}
                   type="button"
-                  onClick={() => takeShot(shot)}
-                  disabled={shotsRemaining <= 0}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl active:scale-95 font-black px-3.5 py-2 shadow-xl border z-30 min-w-[76px] ${buttonClass}`}
+                  onClick={() => {
+                    if (showCourtTutorial) return;
+                    takeShot(shot);
+                  }}
+                  disabled={shotsRemaining <= 0 || showCourtTutorial}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-2xl active:scale-95 font-black px-3.5 py-2 shadow-xl border z-30 min-w-[76px] ${courtTutorialShotHighlight ? "z-[95]" : ""} ${buttonClass}`}
                   style={{ left: `${shot.x}%`, top: `${shot.y}%` }}
                 >
                   {open ? <span className="mb-0.5 block text-[8px] leading-none tracking-[0.16em] font-black">OPEN LOOK</span> : null}
-                  <span className="block text-2xl leading-none">+{formatNumber(getDisplayedShotValue(shot))}</span>
-                  <span className="mt-1 block text-[10px] leading-none opacity-90">{shot.label}</span>
-                  <span className="mt-0.5 block text-[10px] leading-none opacity-80">{getDisplayedShotOdds(shot)}% make</span>
+                  <span className={`block leading-none ${layupOddsFlash ? "text-lg opacity-75" : "text-2xl"}`}>+{formatNumber(getDisplayedShotValue(shot))}</span>
+                  <span className={`mt-1 block leading-none ${layupOddsFlash ? "text-[9px] uppercase tracking-[0.16em] opacity-80" : "text-[10px] opacity-90"}`}>{shot.label}</span>
+                  <span className={`mt-0.5 block leading-none font-black ${layupOddsFlash ? "text-[34px] text-yellow-100 drop-shadow-[0_0_18px_rgba(250,204,21,1)] animate-pulse" : "text-[10px] opacity-80"}`}>{layupOddsFlash ? `${getDisplayedShotOdds(shot)}%` : `${getDisplayedShotOdds(shot)}% make`}</span>
+                  {layupOddsFlash ? <span className="mt-0.5 block text-[8px] uppercase tracking-[0.18em] text-orange-950/80">make chance</span> : null}
                 </button>
               );
-            })}{lastMadeBreakdown && <div className="absolute inset-x-8 bottom-4 z-20 flex items-center justify-center gap-1.5 text-center text-[11px] font-black leading-snug text-amber-200 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]"><span className="text-white/75">Score Calc:</span><span className="text-white">{lastMadeBreakdown.base}</span>{lastMadeBreakdown.superGolden ? <span className="text-yellow-200 drop-shadow-[0_0_8px_rgba(250,204,21,0.85)]">×10</span> : lastMadeBreakdown.golden ? <span className="text-yellow-300">×5</span> : null}{lastMadeBreakdown.hotHandMult > 1 && <span className="text-red-300">×{lastMadeBreakdown.hotHandMult}</span>}{lastMadeBreakdown.openLook && <span className="text-lime-300">×1.25</span>}{lastMadeBreakdown.bouncedIn && <span className="text-emerald-300">✓✓</span>}<span className="text-slate-400">=</span><span className="text-green-300">+{formatNumber(lastMadeBreakdown.earned)} pts</span></div>}<AnimatePresence>{lastResult && <motion.div key={`result-${shotAnimKey}`} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className={`absolute inset-0 flex items-center justify-center pointer-events-none z-50 ${lastResult.made ? "text-green-300 text-6xl font-black" : "text-red-400 text-7xl font-black italic tracking-tight [-webkit-text-stroke:2px_rgba(127,29,29,0.95)] drop-shadow-[0_0_18px_rgba(248,113,113,0.95)]"}`}>{lastResult.made ? "" : "CLANK!"}</motion.div>}</AnimatePresence><AnimatePresence>{pointsPop && <motion.div key={`points-${shotAnimKey}-${pointsPop}`} initial={{ opacity: 0, y: 18, scale: 0.85 }} animate={{ opacity: 1, y: 0, scale: 1.08 }} exit={{ opacity: 0, y: -18, scale: 0.95 }} transition={{ duration: 0.8 }} className="absolute inset-x-0 top-52 z-[65] flex justify-center pointer-events-none"><div className="rounded-xl border border-green-300/40 bg-slate-950/85 px-4 py-2 text-3xl font-black text-green-300 shadow-xl drop-shadow-[0_0_12px_rgba(134,239,172,0.9)]">+{formatNumber(pointsPop)}</div></motion.div>}</AnimatePresence><AnimatePresence>{shotCallouts && (shotCallouts.main || shotCallouts.bigScore || shotCallouts.rimSave) && <motion.div initial={{ opacity: 0, y: 24, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.35 }} className="absolute inset-x-0 top-24 z-[66] flex flex-col items-center gap-1.5 pointer-events-none px-4">
+            })}{activeCourtTutorialTarget === "locations" && <motion.button type="button" initial={{ opacity: 0, scale: 0.78 }} animate={{ opacity: 1, scale: [1, 1.06, 1] }} transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }} className="absolute z-[95] -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 border-white bg-gradient-to-br from-purple-300 via-violet-400 to-purple-600 px-3.5 py-2 text-center font-black text-white shadow-[0_0_34px_rgba(168,85,247,1)] pointer-events-none" style={{ left: `${SHOT_CONFIG.three.x}%`, top: `${SHOT_CONFIG.three.y}%` }}><span className="block text-[8px] uppercase tracking-[0.16em] leading-none">Soon</span><span className="block text-2xl leading-none">+3</span><span className="mt-1 block text-[10px] leading-none">Three Pointer</span></motion.button>}{lastMadeBreakdown && <div className="absolute inset-x-8 bottom-4 z-20 flex items-center justify-center gap-1.5 text-center text-[11px] font-black leading-snug text-amber-200 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]"><span className="text-white/75">Score Calc:</span><span className="text-white">{lastMadeBreakdown.base}</span>{lastMadeBreakdown.superGolden ? <span className="text-yellow-200 drop-shadow-[0_0_8px_rgba(250,204,21,0.85)]">×10</span> : lastMadeBreakdown.golden ? <span className="text-yellow-300">×5</span> : null}{lastMadeBreakdown.hotHandMult > 1 && <span className="text-red-300">×{lastMadeBreakdown.hotHandMult}</span>}{lastMadeBreakdown.openLook && <span className="text-lime-300">×1.25</span>}{lastMadeBreakdown.bouncedIn && <span className="text-emerald-300">✓✓</span>}<span className="text-slate-400">=</span><span className="text-green-300">+{formatNumber(lastMadeBreakdown.earned)} pts</span></div>}<AnimatePresence>{lastResult && <motion.div key={`result-${shotAnimKey}`} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className={`absolute inset-0 flex items-center justify-center pointer-events-none z-50 ${lastResult.made ? "text-green-300 text-6xl font-black" : "text-red-400 text-7xl font-black italic tracking-tight [-webkit-text-stroke:2px_rgba(127,29,29,0.95)] drop-shadow-[0_0_18px_rgba(248,113,113,0.95)]"}`}>{lastResult.made ? "" : "CLANK!"}</motion.div>}</AnimatePresence><AnimatePresence>{pointsPop && <motion.div key={`points-${shotAnimKey}-${pointsPop}`} initial={{ opacity: 0, y: 18, scale: 0.85 }} animate={{ opacity: 1, y: 0, scale: 1.08 }} exit={{ opacity: 0, y: -18, scale: 0.95 }} transition={{ duration: 0.8 }} className="absolute inset-x-0 top-52 z-[65] flex justify-center pointer-events-none"><div className="rounded-xl border border-green-300/40 bg-slate-950/85 px-4 py-2 text-3xl font-black text-green-300 shadow-xl drop-shadow-[0_0_12px_rgba(134,239,172,0.9)]">+{formatNumber(pointsPop)}</div></motion.div>}</AnimatePresence><AnimatePresence>{shotCallouts && (shotCallouts.main || shotCallouts.bigScore || shotCallouts.rimSave) && <motion.div initial={{ opacity: 0, y: 24, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.35 }} className="absolute inset-x-0 top-24 z-[66] flex flex-col items-center gap-1.5 pointer-events-none px-4">
               {shotCallouts.main && <div className={`rounded-2xl border-2 px-5 py-2 text-2xl font-black text-center ${CALLOUT_STYLES[shotCallouts.main.style]}`}>{shotCallouts.main.text}</div>}
               {shotCallouts.bigScore && <div className={`rounded-xl border-2 px-4 py-1.5 text-base font-black text-center ${CALLOUT_STYLES.bigScore}`}>{shotCallouts.bigScore.text}</div>}
               {shotCallouts.rimSave && <div className={`rounded-full border px-3 py-1 text-xs font-black text-center ${CALLOUT_STYLES.rimSave}`}>{shotCallouts.rimSave.text}</div>}
@@ -1673,19 +1962,20 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
               </button>
             </div>}<AnimatePresence>{lockedPrompt && <motion.div key={lockedPrompt.key} initial={{ opacity: 0, y: 12, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.96 }} transition={{ duration: 0.22 }} className="absolute inset-x-0 bottom-28 z-[120] flex justify-center pointer-events-none">
               <div className="rounded-2xl border-2 border-slate-300 bg-slate-950 px-4 py-2 text-center text-sm font-black text-white shadow-[0_0_26px_rgba(0,0,0,1)]">
-                Purchase in Locker Room
+                Purchase in Upgrade Shop
               </div>
             </motion.div>}</AnimatePresence>{courtTripOver && <motion.div initial={{ opacity: 0, y: 18, scale: 0.82 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 190, damping: 14 }} className="absolute inset-x-4 top-[220px] z-[70] flex justify-center pointer-events-none">
               <div className="w-full max-w-[340px] rounded-3xl border-2 border-white/25 bg-slate-950 px-5 py-4 text-center shadow-[0_0_34px_rgba(15,23,42,0.95)] backdrop-blur-sm">
                 <p className="text-[10px] uppercase tracking-[0.24em] font-black text-slate-400">Round Total</p>
                 <p className="mt-1 text-5xl font-black leading-none text-green-300 drop-shadow-[0_0_14px_rgba(134,239,172,0.65)]">+{formatNumber(tripPointsEarned)}</p>
                 <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-400">pts earned</p>
+                {courtRound <= 2 && <p className="mt-2 rounded-2xl border border-sky-300/25 bg-sky-500/10 px-3 py-2 text-[11px] font-black leading-snug text-sky-100">Visit the Upgrade Shop to boost your odds, add balls, and buy power-ups.</p>}
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button type="button" onClick={runItBack} className="pointer-events-auto rounded-2xl border-2 border-orange-200/80 bg-orange-500 px-3 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_20px_rgba(249,115,22,0.55)] active:scale-[0.97]">Keep Shooting</button>
-                  <button type="button" onClick={goLockerRoom} className="pointer-events-auto rounded-2xl border-2 border-sky-200/80 bg-sky-500 px-3 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_20px_rgba(14,165,233,0.55)] active:scale-[0.97]">Hit the Showers</button>
+                  <button type="button" onClick={goLockerRoom} className="pointer-events-auto rounded-2xl border-2 border-sky-200/80 bg-sky-500 px-3 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_20px_rgba(14,165,233,0.55)] active:scale-[0.97]">Visit the Shop</button>
                 </div>
               </div>
-            </motion.div>}</motion.div></Card><div className="rounded-xl bg-slate-950 border border-slate-700 px-2 py-1.5 shadow-xl -mt-1"><div className="flex items-center justify-between gap-2"><div><p className="text-[9px] uppercase tracking-wide text-slate-500 font-black">Scoreboard</p><p className="text-lg font-black leading-none mt-0.5">{formatNumber(currentPoints)} <span className="text-[11px] font-black text-slate-400 align-middle">pts</span></p></div><button type="button" onClick={goLockerRoom} className="rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-black px-2.5 py-1.5 text-[11px] shadow-lg active:scale-95">Locker Room</button></div><div className="grid grid-cols-3 gap-1.5 mt-1">
+            </motion.div>}</motion.div></Card><div data-court-tour="scoreboard" className={`rounded-xl bg-slate-950 border px-2 py-1.5 shadow-xl -mt-1 ${activeCourtTutorialTarget === "scoreboard" ? "relative z-[95] border-white ring-8 ring-sky-100 bg-sky-300/10 shadow-[0_0_42px_rgba(56,189,248,1)] animate-pulse" : "border-slate-700"}`}><div className="flex items-center justify-between gap-2"><div><p className="text-[9px] uppercase tracking-wide text-slate-500 font-black">Scoreboard</p><p className="text-lg font-black leading-none mt-0.5">{formatNumber(currentPoints)} <span className="text-[11px] font-black text-slate-400 align-middle">pts</span></p></div><button type="button" onClick={goLockerRoom} className="rounded-lg bg-sky-500 hover:bg-sky-600 text-white font-black px-2.5 py-1.5 text-[11px] shadow-lg active:scale-95">Upgrade Shop</button></div><div className="grid grid-cols-3 gap-1.5 mt-1">
             <button type="button" onClick={challengeOffer ? useCoachChallenge : upgrades.coachChallenge <= 0 ? () => showLockedPrompt("Challenge") : undefined} disabled={false} className={`h-[60px] rounded-xl border px-2 py-1.5 text-center relative overflow-hidden transition active:scale-[0.98] flex flex-col items-center justify-center ${challengeOffer ? "bg-cyan-500/90 border-cyan-100 text-white shadow-[0_0_20px_rgba(34,211,238,0.75)] animate-pulse" : upgrades.coachChallenge > 0 ? "bg-cyan-950/60 border-cyan-400/60 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.25)]" : "bg-slate-900/80 border-slate-700 text-slate-500"}`}>
               <p className="text-[10px] uppercase tracking-wide font-black leading-none opacity-80">{upgrades.coachChallenge > 0 ? "📋 Challenge" : "Challenge"}</p>
               <p className={`mt-1 text-[13px] font-black leading-tight ${upgrades.coachChallenge > 0 || challengeOffer ? "" : "text-slate-400"}`}>{challengeOffer ? "Use Challenge" : upgrades.coachChallenge > 0 ? "Ready" : "Ask Coach 🔒"}</p>
