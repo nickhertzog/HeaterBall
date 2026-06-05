@@ -1596,7 +1596,6 @@ Erase the mistake, retake the shot, and keep the run alive.`, cost: COACH_CHALLE
               </div>
             </div>
 
-            <button type="button" onClick={startNewGame} className="mt-5 w-full rounded-2xl bg-gradient-to-r from-orange-400 via-amber-300 to-sky-400 px-5 py-4 text-lg font-black text-slate-950 shadow-xl border-2 border-white/50 active:scale-[0.98]">Start Playing</button>
           </Card>
         </div>
       </Shell>
